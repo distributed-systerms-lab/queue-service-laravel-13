@@ -5,6 +5,7 @@ return [
     'queues' => env('QUEUES', 'tasks'),
     'queue' => env('QUEUE_NAME', 'tasks'),
     'concurrency' => env('CONCURRENCY', 4),
+    'publish_concurrency' => env('PUBLISH_CONCURRENCY', 4),
     'max_retries' => env('MAX_RETRIES', 3),
     'max_queue_length' => env('MAX_QUEUE_LENGTH', 100000),
     'operation_timeout' => env('OPERATION_TIMEOUT', '5s'),

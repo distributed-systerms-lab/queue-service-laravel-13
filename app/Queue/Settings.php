@@ -12,6 +12,7 @@ final readonly class Settings
     public string $queue;
     public string $amqpUrl;
     public int $concurrency;
+    public int $publishConcurrency;
     public int $maxRetries;
     public int $maxQueueLength;
     public float $operationTimeout;
@@ -33,6 +34,7 @@ final readonly class Settings
         }
         $this->amqpUrl = (string) ($values['amqp_url'] ?? '');
         $this->concurrency = self::integer($values['concurrency'] ?? 4, 1, 128, 'CONCURRENCY');
+        $this->publishConcurrency = self::integer($values['publish_concurrency'] ?? 4, 1, 256, 'PUBLISH_CONCURRENCY');
         $this->maxRetries = self::integer($values['max_retries'] ?? 3, 0, 100, 'MAX_RETRIES');
         $this->maxQueueLength = self::integer($values['max_queue_length'] ?? 100000, 1, 10000000, 'MAX_QUEUE_LENGTH');
         $this->operationTimeout = self::duration($values['operation_timeout'] ?? '5s', false);

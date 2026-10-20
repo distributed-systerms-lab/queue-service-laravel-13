@@ -1,7 +1,9 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -15,7 +17,7 @@ jobs:
       - name: Build test image
         run: docker build --target test -t queue-service-laravel-13:test .
       - name: Export resolved dependency lock for review
-        run: docker run --rm queue-service-laravel-13:test php -r 'echo "COMPOSER_LOCK_START".base64_encode(file_get_contents("composer.lock"))."COMPOSER_LOCK_END\\n";'
+        run: docker run --rm queue-service-laravel-13:test php -r 'echo "COMPOSER_LOCK_START".base64_encode(gzencode(file_get_contents("composer.lock")))."COMPOSER_LOCK_END\\n";'
       - name: Lint and unit tests
         run: |
           docker run --rm queue-service-laravel-13:test composer validate --no-check-publish
@@ -32,6 +34,12 @@ jobs:
         run: docker compose config --quiet
       - name: Build runtime image
         run: docker build --target runtime -t queue-service-laravel-13:ci .
+      - name: Runtime smoke and broker restart
+        env:
+          RABBITMQ_PASSWORD: ci-smoke-only
+          POSTGRES_PASSWORD: ci-smoke-only
+          LAB_NETWORK: queue-service-laravel-13-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: sh scripts/smoke.sh
       - name: Logs
         if: failure()
         run: docker compose -f compose.test.yaml logs

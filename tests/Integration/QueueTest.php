@@ -229,6 +229,66 @@ final class QueueTest extends TestCase
         self::assertSame(1, $this->count('crash-window'));
     }
 
+    public function testSupervisorStartsAndStopsAllConsumerChildren(): void
+    {
+        $parent = $this->start([PHP_BINARY, 'artisan', 'queue:consume', '--no-ansi'], ['CONCURRENCY' => '2']);
+        $channel = $this->connection->channel();
+        $this->eventually(function () use ($channel): bool {
+            [, , $consumers] = $channel->queue_declare($this->settings->queue, true);
+            return $consumers === 2;
+        }, 'two supervised consumer subscriptions');
+        $parent->signal(SIGTERM);
+        $this->eventually(fn () => !$parent->isRunning(), 'supervisor shutdown');
+        self::assertSame(0, $parent->getExitCode(), $parent->getErrorOutput());
+        $this->eventually(function () use ($channel): bool {
+            [, , $consumers] = $channel->queue_declare($this->settings->queue, true);
+            return $consumers === 0;
+        }, 'all child subscriptions closed');
+        $channel->close();
+    }
+
+    public function testPeekDeadDoesNotRemoveTheMessage(): void
+    {
+        $this->worker();
+        $this->publish(new Envelope('peek', 'lab.fail', "\x00\xff"));
+        $channel = $this->connection->channel();
+        $this->eventually(function () use ($channel): bool {
+            [, $ready] = $channel->queue_declare($this->settings->queue.'.dead', true);
+            return $ready === 1;
+        }, 'dead letter ready for inspection');
+        for ($i = 0; $i < 3; $i++) {
+            $peek = $this->start([PHP_BINARY, 'artisan', 'queue:peek-dead', '--queue='.$this->settings->queue, '--no-ansi']);
+            self::assertSame(0, $peek->wait(), $peek->getErrorOutput());
+            $output = json_decode($peek->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            self::assertTrue($output['found']);
+            self::assertSame('peek', $output['message_id']);
+            self::assertSame(base64_encode("\x00\xff"), $output['payload']);
+        }
+        [, $ready] = $channel->queue_declare($this->settings->queue.'.dead', true);
+        self::assertSame(1, $ready);
+        $channel->close();
+    }
+
+    public function testOverflowRejectsPublication(): void
+    {
+        $name = $this->settings->queue.'-full';
+        $settings = new Settings(array_replace(config('queue_lab'), ['queues' => $name, 'queue' => $name, 'max_queue_length' => 1]));
+        $broker = new Broker($settings);
+        $connection = $broker->connect();
+        try {
+            $broker->declare($connection);
+            $publisher = new RabbitPublisher($broker, $settings);
+            $publisher->publish($name, new Envelope('first', 'lab.echo'));
+            $this->expectException(PublishRejected::class);
+            $publisher->publish($name, new Envelope('second', 'lab.echo'));
+        } finally {
+            $channel = $connection->channel();
+            $channel->queue_delete($name);
+            $channel->queue_delete($name.'.dead');
+            $connection->close();
+        }
+    }
+
     public function testReadyMessageSurvivesPublisherConnectionClosure(): void
     {
         $this->publish(new Envelope('persistent', 'lab.echo', 'waiting'));
