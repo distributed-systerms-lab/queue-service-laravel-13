@@ -99,7 +99,7 @@ final class QueueTest extends TestCase
         (new RabbitPublisher($this->broker, $this->settings))->publish($queue ?? $this->settings->queue, $message);
     }
 
-    private function count(string $id): int
+    private function receiptCount(string $id): int
     {
         return (int) $this->app['db']->selectOne('SELECT count(*) AS n FROM processed_messages WHERE queue_name = ? AND message_id = ?', [$this->settings->queue, $id])->n;
     }
@@ -150,7 +150,7 @@ final class QueueTest extends TestCase
             foreach ($workers as $worker) { $acks += substr_count($worker->getErrorOutput(), 'message acknowledged'); }
             return $acks === 12;
         }, 'all duplicate deliveries acknowledged');
-        self::assertSame(1, $this->count('concurrent'));
+        self::assertSame(1, $this->receiptCount('concurrent'));
         $row = $this->app['db']->selectOne("SELECT encode(payload, 'hex') AS payload, correlation_id, causation_id FROM processed_messages WHERE queue_name = ? AND message_id = ?", [$this->settings->queue, 'concurrent']);
         self::assertSame(bin2hex("\x00\xffhello"), $row->payload);
         self::assertSame('run', $row->correlation_id);
@@ -170,7 +170,7 @@ final class QueueTest extends TestCase
         self::assertSame('poison', $dead->get('message_id'));
         self::assertArrayHasKey('x-death', $dead->get('application_headers')->getNativeData());
         self::assertSame(2, substr_count($worker->getErrorOutput(), 'message will be retried'));
-        self::assertSame(0, $this->count('poison'));
+        self::assertSame(0, $this->receiptCount('poison'));
         $dead->ack();
         $channel->close();
     }
@@ -195,7 +195,7 @@ final class QueueTest extends TestCase
             $dead->ack();
             return true;
         }, 'conflicting message in DLQ');
-        self::assertSame(1, $this->count('conflict'));
+        self::assertSame(1, $this->receiptCount('conflict'));
         $channel->close();
     }
 
@@ -211,7 +211,7 @@ final class QueueTest extends TestCase
             $dead->ack();
             return true;
         });
-        self::assertSame(0, $this->count('invalid'));
+        self::assertSame(0, $this->receiptCount('invalid'));
         $channel->close();
     }
 
@@ -219,14 +219,14 @@ final class QueueTest extends TestCase
     {
         $first = $this->worker('30s');
         $this->publish(new Envelope('crash-window', 'lab.echo', 'survives'));
-        $this->eventually(fn () => $this->count('crash-window') === 1 && str_contains($first->getErrorOutput(), 'message processed'), 'commit before ACK');
+        $this->eventually(fn () => $this->receiptCount('crash-window') === 1 && str_contains($first->getErrorOutput(), 'message processed'), 'commit before ACK');
         $first->signal(SIGKILL);
         $first->wait();
         $replacement = $this->worker();
         $this->eventually(fn () => str_contains($replacement->getErrorOutput(), 'message acknowledged'), 'replacement ACK');
         self::assertStringContainsString('"redelivered":true', $replacement->getErrorOutput());
         self::assertStringContainsString('"new_receipt":false', $replacement->getErrorOutput());
-        self::assertSame(1, $this->count('crash-window'));
+        self::assertSame(1, $this->receiptCount('crash-window'));
     }
 
     public function testSupervisorStartsAndStopsAllConsumerChildren(): void
@@ -299,6 +299,6 @@ final class QueueTest extends TestCase
         $message->reject(true);
         $channel->close();
         $this->worker();
-        $this->eventually(fn () => $this->count('persistent') === 1);
+        $this->eventually(fn () => $this->receiptCount('persistent') === 1);
     }
 }

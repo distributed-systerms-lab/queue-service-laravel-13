@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compil
 COPY . .
 RUN mkdir -p generated bootstrap/cache storage/logs \
     && protoc -I api --php_out=generated api/queue/v1/queue.proto \
+    && composer validate --strict --no-check-publish \
     && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
 FROM build AS test

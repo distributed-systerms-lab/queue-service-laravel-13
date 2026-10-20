@@ -15,7 +15,7 @@ grpc:
     allocate_timeout: 10s
     destroy_timeout: 15s
     supervisor:
-      exec_ttl: 15s
+      exec_ttl: 0s
       max_worker_memory: 128
 
 logs:

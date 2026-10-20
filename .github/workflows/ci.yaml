@@ -21,11 +21,6 @@ jobs:
           docker run --rm queue-service-laravel-13:test composer validate --no-check-publish
           docker run --rm queue-service-laravel-13:test composer lint
           docker run --rm queue-service-laravel-13:test vendor/bin/phpunit --testsuite Unit
-      - name: Export resolved dependency lock for review
-        timeout-minutes: 1
-        continue-on-error: true
-        run: |
-          timeout 30s docker run --rm queue-service-laravel-13:test php -r 'echo "COMPOSER_LOCK_START\n".chunk_split(base64_encode(file_get_contents("composer.lock")), 3000, "\n")."COMPOSER_LOCK_END\n";'
       - name: Audit dependencies
         run: docker run --rm queue-service-laravel-13:test composer audit
       - name: Integration tests with real RabbitMQ and PostgreSQL
