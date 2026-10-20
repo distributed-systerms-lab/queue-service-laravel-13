@@ -31,7 +31,7 @@ final class PeekDead extends Command
                         'correlation_id' => $properties['correlation_id'] ?? '',
                         'headers' => isset($properties['application_headers']) ? $properties['application_headers']->getNativeData() : [],
                     ], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
-                } finally { $delivery->nack(false, true); }
+                } finally { $delivery->nack(true, false); }
             }
         } finally { $connection->close(); }
         return self::SUCCESS;
