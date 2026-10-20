@@ -33,10 +33,10 @@ docker compose exec queue-service-laravel-13 php artisan queue:peek-dead --queue
 
 ## 3. Kill after commit, before ACK
 
-Use a single consumer process so the target is unambiguous:
+Use one consumer container with one PHP child so the target is unambiguous:
 
 ```sh
-ACKNOWLEDGMENT_DELAY=30s docker compose up -d --force-recreate --scale consumer=1 consumer
+CONCURRENCY=1 ACKNOWLEDGMENT_DELAY=30s docker compose up -d --force-recreate --scale consumer=1 consumer
 docker compose exec queue-service-laravel-13 php artisan queue:publish --id=crash-window-1 --payload=survives
 docker compose logs -f consumer
 ```
@@ -45,7 +45,7 @@ Wait for `message processed` for `crash-window-1`, then immediately run in anoth
 
 ```sh
 docker compose kill -s SIGKILL consumer
-ACKNOWLEDGMENT_DELAY=0s docker compose up -d --force-recreate consumer
+CONCURRENCY=1 ACKNOWLEDGMENT_DELAY=0s docker compose up -d --force-recreate consumer
 docker compose logs -f consumer
 ```
 
