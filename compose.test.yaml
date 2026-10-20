@@ -1,0 +1,41 @@
+name: queue-service-laravel-13-tests
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.3-management
+    hostname: rabbitmq-test
+    environment:
+      RABBITMQ_DEFAULT_USER: lab
+      RABBITMQ_DEFAULT_PASS: lab-test-only
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, check_running]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: lab-test-only
+      POSTGRES_DB: queue_lab
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U lab -d queue_lab]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  test:
+    build:
+      context: .
+      target: test
+    environment:
+      APP_ENV: testing
+      AMQP_URL: amqp://lab:lab-test-only@rabbitmq:5672/
+      DATABASE_URL: postgres://lab:lab-test-only@postgres:5432/queue_lab?sslmode=disable
+      PUBLISH_CONCURRENCY: "2"
+      GRPC_ADDRESS: 127.0.0.1:50051
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    command: [vendor/bin/phpunit]

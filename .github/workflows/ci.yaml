@@ -1,0 +1,40 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Build test image
+        run: docker build --target test -t queue-service-laravel-13:test .
+      - name: Export resolved dependency lock for review
+        run: docker run --rm queue-service-laravel-13:test php -r 'echo "COMPOSER_LOCK_START".base64_encode(file_get_contents("composer.lock"))."COMPOSER_LOCK_END\\n";'
+      - name: Lint and unit tests
+        run: |
+          docker run --rm queue-service-laravel-13:test composer validate --no-check-publish
+          docker run --rm queue-service-laravel-13:test composer lint
+          docker run --rm queue-service-laravel-13:test vendor/bin/phpunit --testsuite Unit
+      - name: Audit dependencies
+        run: docker run --rm queue-service-laravel-13:test composer audit
+      - name: Integration tests with real RabbitMQ and PostgreSQL
+        run: make integration
+      - name: Validate application Compose
+        env:
+          RABBITMQ_PASSWORD: ci-validation-only
+          POSTGRES_PASSWORD: ci-validation-only
+        run: docker compose config --quiet
+      - name: Build runtime image
+        run: docker build --target runtime -t queue-service-laravel-13:ci .
+      - name: Logs
+        if: failure()
+        run: docker compose -f compose.test.yaml logs
+      - name: Cleanup
+        if: always()
+        run: make integration-down

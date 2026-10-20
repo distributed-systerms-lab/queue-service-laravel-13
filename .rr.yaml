@@ -1,0 +1,24 @@
+version: "3"
+
+server:
+  command: "php grpc-worker.php"
+  relay: pipes
+
+grpc:
+  listen: "tcp://${GRPC_ADDRESS}"
+  proto: ["api/queue/v1/queue.proto"]
+  max_recv_msg_size: 2
+  max_send_msg_size: 2
+  pool:
+    num_workers: ${PUBLISH_CONCURRENCY}
+    max_jobs: 1000
+    allocate_timeout: 10s
+    destroy_timeout: 15s
+    supervisor:
+      exec_ttl: 15s
+      max_worker_memory: 128
+
+logs:
+  mode: production
+  level: info
+  output: stderr
