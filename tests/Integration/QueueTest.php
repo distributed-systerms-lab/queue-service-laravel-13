@@ -12,16 +12,13 @@ use App\Queue\RabbitPublisher;
 use App\Queue\ReceiptStore;
 use App\Queue\Settings;
 use App\Queue\Unroutable;
-use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Foundation\Application;
 use PhpAmqpLib\Connection\AbstractConnection;
 use PhpAmqpLib\Message\AMQPMessage;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Foundation\Testing\TestCase;
 use Symfony\Component\Process\Process;
 
 final class QueueTest extends TestCase
 {
-    private Application $app;
     private Settings $settings;
     private Broker $broker;
     private AbstractConnection $connection;
@@ -33,8 +30,6 @@ final class QueueTest extends TestCase
         parent::setUp();
         self::assertNotEmpty(getenv('AMQP_URL'), 'Integration tests require AMQP_URL; use make integration');
         self::assertNotEmpty(getenv('DATABASE_URL'), 'Integration tests require DATABASE_URL; use make integration');
-        $this->app = require dirname(__DIR__, 2).'/bootstrap/app.php';
-        $this->app->make(Kernel::class)->bootstrap();
         $queue = 'test-'.bin2hex(random_bytes(8));
         $this->settings = new Settings(array_replace(config('queue_lab'), [
             'queues' => $queue, 'queue' => $queue, 'max_retries' => 2,
@@ -279,8 +274,19 @@ final class QueueTest extends TestCase
             $broker->declare($connection);
             $publisher = new RabbitPublisher($broker, $settings);
             $publisher->publish($name, new Envelope('first', 'lab.echo'));
-            $this->expectException(PublishRejected::class);
-            $publisher->publish($name, new Envelope('second', 'lab.echo'));
+            // Quorum queues notify publishers asynchronously: a few messages can
+            // overshoot the nominal limit before the rejection reaches a publisher.
+            $rejected = false;
+            for ($attempt = 2; $attempt <= 64; $attempt++) {
+                try {
+                    $publisher->publish($name, new Envelope('overflow-'.$attempt, 'lab.echo'));
+                } catch (PublishRejected) {
+                    $rejected = true;
+                    break;
+                }
+                usleep(20000);
+            }
+            self::assertTrue($rejected, 'The full quorum queue must eventually reject publication');
         } finally {
             $channel = $connection->channel();
             $channel->queue_delete($name);
