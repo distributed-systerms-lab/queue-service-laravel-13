@@ -1,0 +1,6 @@
+/vendor/
+/.env
+/.phpunit.cache/
+/generated/
+/bootstrap/cache/*.php
+/storage/logs/*
